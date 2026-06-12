@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Order portaal | Pro3D Manufacturing</title>
+  <link rel="stylesheet" href="/style.css?v=177" />
+</head>
+<body>
+  <header class="hero page-hero">
+    <nav class="topbar">
+      <a href="/" class="brand"><img src="/logo.png?v=177" alt="Pro3D Manufacturing logo" class="brand-logo" /><div class="brand-copy"><strong>Pro3D Manufacturing</strong></div></a>
+      <div class="nav-links"><a href="/admin-accounts.html" class="nav-link">Account beheer</a><a href="/" class="nav-link">Terug naar website</a></div>
+    </nav>
+    <section class="hero-content">
+      <div>
+        <p class="eyebrow">Beheer</p>
+        <h1>Order portaal</h1>
+        <p class="lead">Vul altijd opnieuw je admin-code in. De code wordt niet opgeslagen op deze pc.</p>
+      </div>
+      <div class="hero-card"><span>Orders</span><p>Bekijk orders, sorteer op datum of bedrag en open details.</p></div>
+    </section>
+  </header>
+
+  <main class="page-main">
+    <section class="panel page-card" id="adminLoginPanel">
+      <p class="eyebrow">Toegang</p>
+      <h2>Admin-code</h2>
+      <form id="adminLoginForm" class="account-form">
+        <label>Admin-code<input type="password" id="adminCodeInput" required placeholder="Admin-code"></label>
+        <button type="submit" class="primary full">Open order portaal</button>
+        <div id="adminLoginResult" class="form-result"></div>
+      </form>
+    </section>
+
+    <section class="panel page-card hidden" id="ordersPanel">
+      <div class="portal-head">
+        <div>
+          <p class="eyebrow">Overzicht</p>
+          <h2>Orders</h2>
+        </div>
+        <button type="button" class="secondary" id="adminLogoutBtn">Uitloggen / vergrendelen</button>
+      </div>
+
+      <div class="field-row">
+        <label>Sorteer op
+          <select id="sortBy">
+            <option value="date_desc">Nieuwste eerst</option>
+            <option value="date_asc">Oudste eerst</option>
+            <option value="amount_desc">Hoogste bedrag eerst</option>
+            <option value="amount_asc">Laagste bedrag eerst</option>
+          </select>
+        </label>
+        <label>Zoeken
+          <input type="text" id="orderSearch" placeholder="Ordernummer, klant, bedrijf of e-mail">
+        </label>
+      </div>
+
+      <button type="button" class="secondary" id="refreshOrdersBtn">Ververs orders</button>
+      <div id="ordersList" class="orders-list"></div>
+    </section>
+
+    <section class="panel page-card hidden" id="orderDetailPanel">
+      <div class="portal-head">
+        <div>
+          <p class="eyebrow">Order detail</p>
+          <h2 id="detailTitle">Order</h2>
+        </div>
+        <button type="button" class="secondary" id="closeDetailBtn">Sluiten</button>
+      </div>
+      <div id="orderDetail" class="order-detail"></div>
+    </section>
+  </main>
+
+  <script>
+    let adminCode = '';
+    let allOrders = [];
+
+    const loginPanel = document.getElementById('adminLoginPanel');
+    const ordersPanel = document.getElementById('ordersPanel');
+    const detailPanel = document.getElementById('orderDetailPanel');
+    const loginForm = document.getElementById('adminLoginForm');
+    const loginResult = document.getElementById('adminLoginResult');
+    const adminCodeInput = document.getElementById('adminCodeInput');
+    const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+    const ordersList = document.getElementById('ordersList');
+    const refreshOrdersBtn = document.getElementById('refreshOrdersBtn');
+    const sortBy = document.getElementById('sortBy');
+    const orderSearch = document.getElementById('orderSearch');
+    const detailTitle = document.getElementById('detailTitle');
+    const orderDetail = document.getElementById('orderDetail');
+    const closeDetailBtn = document.getElementById('closeDetailBtn');
+
+    function show(el) { el.classList.remove('hidden'); }
+    function hide(el) { el.classList.add('hidden'); }
+    function euro(value) { return '€' + Number(value || 0).toFixed(2); }
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+    }
+
+    async function verifyAdmin() {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminCode })
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Admin-code klopt niet.');
+    }
+
+    async function loadOrders() {
+      ordersList.innerHTML = 'Orders laden...';
+      try {
+        const res = await fetch('/api/admin/orders/list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminCode, sortBy: sortBy.value })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Orders ophalen mislukt.');
+        allOrders = json.orders || [];
+        renderOrders();
+      } catch (err) {
+        ordersList.innerHTML = `<p class="form-result error">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function renderOrders() {
+      const q = orderSearch.value.trim().toLowerCase();
+      const orders = allOrders.filter(order => {
+        const haystack = `${order.orderNumber} ${order.customerName} ${order.customerEmail} ${order.companyName}`.toLowerCase();
+        return !q || haystack.includes(q);
+      });
+
+      if (!orders.length) {
+        ordersList.innerHTML = '<p class="muted">Geen orders gevonden.</p>';
+        return;
+      }
+
+      ordersList.innerHTML = orders.map(order => `
+        <div class="order-row">
+          <div>
+            <strong>${escapeHtml(order.orderNumber)}</strong>
+            <p>${escapeHtml(new Date(order.createdAt).toLocaleString('nl-NL'))}</p>
+            <p>${escapeHtml(order.companyName || order.customerName || '-')} · ${escapeHtml(order.customerEmail || '-')}</p>
+            <p>${statusBadge(order.status, order.statusLabel)} ${escapeHtml(order.paymentMethod || 'direct')} · ${order.itemCount} item(s)</p>
+          </div>
+          <div class="order-row-right">
+            <strong>${euro(order.inclVat)} incl.</strong>
+            <span>${euro(order.exVat)} excl.</span>
+            <button type="button" class="primary" data-open-order="${escapeHtml(order.orderNumber)}">Openen</button>
+          </div>
+        </div>
+      `).join('');
+
+      ordersList.querySelectorAll('[data-open-order]').forEach(btn => {
+        btn.addEventListener('click', () => openOrder(btn.dataset.openOrder));
+      });
+    }
+
+    
+    
+
+    function openTrackingModal(order) {
+      pendingShippingOrderNumber = order?.orderNumber || currentOrder?.orderNumber || '';
+      if (!pendingShippingOrderNumber) return;
+
+      document.getElementById('trackingModalCarrier').value = order?.tracking?.carrier || '';
+      document.getElementById('trackingModalCode').value = order?.tracking?.code || '';
+      document.getElementById('trackingModalUrl').value = order?.tracking?.url || '';
+
+      document.getElementById('trackingModal')?.classList.remove('hidden');
+      document.getElementById('trackingModalOverlay')?.classList.remove('hidden');
+      document.getElementById('trackingModal')?.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeTrackingModal() {
+      document.getElementById('trackingModal')?.classList.add('hidden');
+      document.getElementById('trackingModalOverlay')?.classList.add('hidden');
+      document.getElementById('trackingModal')?.setAttribute('aria-hidden', 'true');
+      pendingShippingOrderNumber = '';
+    }
+
+    async function saveTrackingModal() {
+      if (!pendingShippingOrderNumber) return;
+
+      const carrier = document.getElementById('trackingModalCarrier')?.value || '';
+      const code = document.getElementById('trackingModalCode')?.value || '';
+      const url = document.getElementById('trackingModalUrl')?.value || '';
+
+      await updateOrderTracking(pendingShippingOrderNumber, { carrier, code, url }, false);
+      await updateOrderStatus(pendingShippingOrderNumber, 'shipping', false);
+      closeTrackingModal();
+      await bindTrackingModal();
+    loadOrders();
+      await openOrder(pendingShippingOrderNumber);
+    }
+
+    window.openTrackingModal = openTrackingModal;
+    window.closeTrackingModal = closeTrackingModal;
+    window.saveTrackingModal = saveTrackingModal;
+
+    function bindTrackingModal() {
+      document.getElementById('closeTrackingModal')?.addEventListener('click', closeTrackingModal);
+      document.getElementById('cancelTrackingModal')?.addEventListener('click', closeTrackingModal);
+      document.getElementById('trackingModalOverlay')?.addEventListener('click', closeTrackingModal);
+      document.getElementById('saveTrackingModal')?.addEventListener('click', () => {
+        saveTrackingModal().catch(err => alert(err.message || 'Track & trace opslaan mislukt.'));
+      });
+    }
+
+    function statusBadge(status, label) {
+      const s = String(status || 'new');
+      return `<span class="status-badge status-${escapeHtml(s)}">${escapeHtml(label || s || 'Nieuw')}</span>`;
+    }
+
+    async function updateOrderTracking(orderNumber, values = null, reload = true) {
+      try {
+        const payload = values || {
+          carrier: document.getElementById('trackingCarrier')?.value || '',
+          code: document.getElementById('trackingCode')?.value || '',
+          url: document.getElementById('trackingUrl')?.value || ''
+        };
+
+        const res = await fetch('/api/admin/orders/tracking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminCode,
+            orderNumber,
+            carrier: payload.carrier || '',
+            code: payload.code || '',
+            url: payload.url || ''
+          })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Track & trace opslaan mislukt.');
+        if (reload) {
+          await loadOrders();
+          await openOrder(orderNumber);
+        }
+      } catch (err) {
+        alert(err.message);
+        throw err;
+      }
+    }
+
+    async function updateOrderStatus(orderNumber, status, reload = true) {
+      try {
+        const res = await fetch('/api/admin/orders/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminCode, orderNumber, status })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Status bijwerken mislukt.');
+        if (reload) {
+          await loadOrders();
+          await openOrder(orderNumber);
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function openAdminDocument(orderNumber, type) {
+      const res = await fetch('/api/admin/order-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminCode, orderNumber, type })
+      });
+      const json = await res.json();
+      if (json.ok && json.url) window.open(json.url, '_blank');
+      else alert(json.error || 'Document openen mislukt.');
+    }
+
+    function adminFileDownloadUrl(orderNumber, itemIndex, fileType = 'original') {
+      const params = new URLSearchParams({ adminCode, orderNumber, itemIndex: String(itemIndex), fileType });
+      return `/api/admin/order-file?${params.toString()}`;
+    }
+
+    async function openOrder(orderNumber) {
+      orderDetail.innerHTML = 'Order laden...';
+      show(detailPanel);
+      try {
+        const res = await fetch('/api/admin/orders/detail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminCode, orderNumber })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Order openen mislukt.');
+        const order = json.order;
+        const customer = order.customer || {};
+        detailTitle.textContent = order.orderNumber;
+        const status = order.status || 'new';
+
+        orderDetail.innerHTML = `
+          <div class="order-actions">
+            <div>
+              <label>Status
+                <select id="adminOrderStatus">
+                  <option value="new" ${status === 'new' ? 'selected' : ''}>Nieuw</option>
+                  <option value="preparation" ${status === 'preparation' ? 'selected' : ''}>Voorbereiding</option>
+                  <option value="printing" ${status === 'printing' ? 'selected' : ''}>3D printen</option>
+                  <option value="shipping" ${status === 'shipping' ? 'selected' : ''}>Verzonden / shipping</option>
+                  <option value="completed" ${status === 'completed' ? 'selected' : ''}>Afgerond</option>
+                </select>
+              </label>
+              <button type="button" class="primary" id="saveOrderStatusBtn">Status opslaan</button>
+            </div>
+            <div class="order-doc-buttons">
+              <button type="button" class="secondary" id="openQuoteBtn">Offerte PDF</button>
+              <button type="button" class="secondary" id="openInvoiceBtn">Factuur PDF</button>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <div>
+              <h3>Klant</h3>
+              <p><strong>${escapeHtml(customer.name || '-')}</strong></p>
+              <p>${escapeHtml(customer.email || '-')}</p>
+              <p>${escapeHtml(customer.phone || '-')}</p>
+              <p>${escapeHtml(customer.companyName || '-')}</p>
+              <p>Btw: ${escapeHtml(customer.vatNumber || '-')}</p>
+              <p>Type: ${escapeHtml(customer.customerType || 'private')}</p>
+              <p>Betaling: ${escapeHtml(customer.paymentMethod || 'direct')}</p>
+              <p>PO / referentie: ${escapeHtml(customer.poNumber || '-')}</p>
+            </div>
+            <div>
+              <h3>Adres</h3>
+              <p>${escapeHtml(customer.address || customer.street || '-')} ${escapeHtml(customer.houseNumber || '')}</p>
+              <p>${escapeHtml(customer.postalCode || '-')} ${escapeHtml(customer.city || '-')}</p>
+              <p>${escapeHtml(customer.country || '-')}</p>
+            </div>
+            <div>
+              <h3>Bedragen</h3>
+              <p>Producten excl.: <strong>${euro(order.totals?.productsExVat)}</strong></p>
+              <p>Verzending excl.: <strong>${euro(order.totals?.shippingExVat)}</strong></p>
+              <p>Totaal excl.: <strong>${euro(order.totals?.exVat)}</strong></p>
+              <p>Totaal incl.: <strong>${euro(order.totals?.inclVat)}</strong></p>
+              <p>Status: <strong>${escapeHtml(order.statusLabel || order.status || 'Nieuw')}</strong></p>
+              <p>Track & trace: <strong>${escapeHtml(order.tracking?.code || '-')}</strong></p>
+              <p>Vervoerder: <strong>${escapeHtml(order.tracking?.carrier || '-')}</strong></p>
+              <p>E-mail: ${order.emailStatus?.sent ? 'verzonden' : 'niet verzonden / SMTP niet ingesteld'}</p>
+            </div>
+          </div>
+
+          <h3>Items</h3>
+          <div class="items-table">
+            ${(order.items || []).map((item, index) => `
+              <div class="item-row">
+                <div>
+                  <strong>${escapeHtml(item.filename || '-')}</strong>
+                  <p>${escapeHtml(item.technologyLabel || '-')} · ${escapeHtml(item.material || '-')} · ${escapeHtml(item.color || '-')}</p>
+                  <p>Aantal: ${escapeHtml(item.quantity || 1)} · Geschat gewicht: ${escapeHtml(item.totalWeightG || '-')} g</p>
+                  <p>Afmetingen: ${escapeHtml(typeof item.dimensions === 'object' ? `${item.dimensions.x || '-'} × ${item.dimensions.y || '-'} × ${item.dimensions.z || '-'} mm` : (item.dimensions || '-'))}</p>
+                  <p><a href="${adminFileDownloadUrl(order.orderNumber, index, 'original')}" target="_blank">Download uploadbestand</a> · <a href="${adminFileDownloadUrl(order.orderNumber, index, 'converted')}" target="_blank">Download STL</a></p>
+                </div>
+                <div>
+                  <strong>${euro(item.totalPrice)}</strong>
+                  <p>${euro(item.totalInclVat)} incl.</p>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        document.getElementById('saveOrderStatusBtn')?.addEventListener('click', () => {
+          const selectedStatus = document.getElementById('adminOrderStatus')?.value || 'new';
+          if (selectedStatus === 'shipping') {
+            openTrackingModal(order);
+            return;
+          }
+          updateOrderStatus(order.orderNumber, selectedStatus);
+        });
+        document.getElementById('saveTrackingBtn')?.addEventListener('click', () => updateOrderTracking(order.orderNumber));
+        document.getElementById('openQuoteBtn')?.addEventListener('click', () => openAdminDocument(order.orderNumber, 'quote'));
+        document.getElementById('openInvoiceBtn')?.addEventListener('click', () => openAdminDocument(order.orderNumber, 'invoice'));
+        window.scrollTo({ top: detailPanel.offsetTop - 30, behavior: 'smooth' });
+      } catch (err) {
+        orderDetail.innerHTML = `<p class="form-result error">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginResult.className = 'form-result';
+      loginResult.textContent = 'Controleren...';
+      adminCode = adminCodeInput.value;
+
+      try {
+        await verifyAdmin();
+        hide(loginPanel);
+        show(ordersPanel);
+        loginResult.textContent = '';
+        await loadOrders();
+      } catch (err) {
+        loginResult.className = 'form-result error';
+        loginResult.textContent = err.message;
+      }
+    });
+
+    adminLogoutBtn.addEventListener('click', () => {
+      adminCode = '';
+      adminCodeInput.value = '';
+      allOrders = [];
+      ordersList.innerHTML = '';
+      hide(ordersPanel);
+      hide(detailPanel);
+      show(loginPanel);
+    });
+
+    refreshOrdersBtn.addEventListener('click', loadOrders);
+    sortBy.addEventListener('change', loadOrders);
+    orderSearch.addEventListener('input', renderOrders);
+    closeDetailBtn.addEventListener('click', () => hide(detailPanel));
+
+    // Admin-code wordt bewust niet opgeslagen: altijd opnieuw inloggen.
+  </script>
+
+  <div class="admin-modal-overlay hidden" id="trackingModalOverlay"></div>
+  <section class="admin-modal hidden" id="trackingModal" aria-hidden="true">
+    <button class="modal-close" type="button" id="closeTrackingModal" onclick="closeTrackingModal()">×</button>
+    <p class="eyebrow">Verzending</p>
+    <h2>Track & trace toevoegen</h2>
+    <p class="muted">Vul de verzendgegevens in. De order wordt daarna op <strong>Verzonden</strong> gezet.</p>
+
+    <div class="tracking-modal-grid">
+      <label>Vervoerder
+        <select id="trackingModalCarrier">
+          <option value="">Kies vervoerder</option>
+          <option value="PostNL">PostNL</option>
+          <option value="DHL">DHL</option>
+          <option value="DPD">DPD</option>
+          <option value="UPS">UPS</option>
+          <option value="GLS">GLS</option>
+          <option value="Anders">Anders</option>
+        </select>
+      </label>
+      <label>Track & trace code
+        <input id="trackingModalCode" type="text" placeholder="Bijvoorbeeld 3S...">
+      </label>
+      <label>Track & trace link
+        <input id="trackingModalUrl" type="url" placeholder="https://...">
+      </label>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="secondary" id="cancelTrackingModal" onclick="closeTrackingModal()">Annuleren</button>
+      <button type="button" class="primary" id="saveTrackingModal" onclick="saveTrackingModal().catch(err => alert(err.message || 'Track & trace opslaan mislukt.'))">Opslaan en verzenden</button>
+    </div>
+  </section>
+
+</body>
+</html>

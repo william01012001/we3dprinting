@@ -1,0 +1,23 @@
+<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Contact | Pro3D Manufacturing</title><link rel="stylesheet" href="/style.css?v=177"/></head><body><header class="hero page-hero"><nav class="topbar">
+  <a href="/" class="brand"><img src="/logo.png?v=177" alt="Pro3D Manufacturing logo" class="brand-logo" /><div class="brand-copy"><strong>Pro3D Manufacturing</strong></div></a>
+  <div class="nav-links"><a href="/" class="nav-link">Calculatie</a><a href="/over-ons.html" class="nav-link">Wie zijn wij</a><a href="/contact.html" class="nav-btn">Contact</a></div>
+<div class="lang-switch" aria-label="Taal kiezen / Choose language">
+  <button type="button" class="lang-btn active" data-lang="nl" title="Nederlands">🇳🇱 NL</button>
+  <button type="button" class="lang-btn" data-lang="en" title="English">🇬🇧 EN</button>
+</div>
+</nav><section class="hero-content"><div><p class="eyebrow">Contact</p><h1>Vraag over je 3D-print?</h1><p class="lead">Stuur je vraag door. Het formulier stuurt de vraag naar <a href="mailto:info@Pro3DManufacturing.nl">info@Pro3DManufacturing.nl</a> en slaat hem ook lokaal op in de website-map.</p></div><div class="hero-card contact-company-card">
+  <div class="contact-brand">
+    <img src="/logo.png?v=177" alt="Pro3D Manufacturing logo" class="contact-logo" />
+    <div class="contact-brand-text">
+      <span>Bedrijfsgegevens</span>
+      <h2>Pro3D Manufacturing</h2>
+    </div>
+  </div>
+
+  <div class="contact-details">
+    <p class="contact-line contact-phone">+31 6 57091646</p>
+    <p class="contact-line contact-email"><a href="mailto:info@Pro3DManufacturing.nl">info@Pro3DManufacturing.nl</a></p>
+    <p class="contact-address">Honderdland 380<br>2676 LV Maasdijk<br>The Netherlands</p>
+  </div>
+</div></section></header><main class="page-main"><section class="panel page-card"><p class="eyebrow">Vraag stellen</p><h2>Contactformulier</h2><form class="question-form" id="contactForm"><div class="field-row"><label>Naam<input type="text" name="name" required placeholder="Je naam"></label><label>E-mail<input type="email" name="email" required placeholder="info@Pro3DManufacturing.nl"></label></div><label>Telefoon<input type="tel" name="phone" placeholder="Optioneel"></label><label>Onderwerp<input type="text" name="subject" placeholder="Bijvoorbeeld: materiaalkeuze"></label><label>Vraag<textarea name="message" rows="6" required placeholder="Typ hier je vraag"></textarea></label><button class="primary full" type="submit">Vraag versturen</button><div id="contactResult" class="form-result"></div></form></section></main><footer><div class="footer-brand"><img src="/logo.png?v=177" class="footer-logo" alt="logo"><p>© Pro3D Manufacturing </p></div></footer><script>document.getElementById('contactForm').addEventListener('submit',async e=>{e.preventDefault();const r=document.getElementById('contactResult');r.className='form-result';r.textContent='Vraag wordt verstuurd...';try{const data=Object.fromEntries(new FormData(e.target).entries());const res=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const json=await res.json();if(!json.ok)throw new Error(json.error||'Versturen mislukt');r.className='form-result success';r.textContent='Bedankt, je vraag is ontvangen.';e.target.reset();}catch(err){r.className='form-result error';r.textContent=err.message;}});</script>  <script src="/lang.js?v=177"></script>
+</body></html>

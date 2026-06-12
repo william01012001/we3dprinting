@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account beheer | Pro3D Manufacturing</title>
+  <link rel="stylesheet" href="/style.css?v=177" />
+</head>
+<body>
+  <header class="hero page-hero">
+    <nav class="topbar">
+      <a href="/" class="brand"><img src="/logo.png?v=177" alt="Pro3D Manufacturing logo" class="brand-logo" /><div class="brand-copy"><strong>Pro3D Manufacturing</strong></div></a>
+      <div class="nav-links"><a href="/admin-orders.html" class="nav-link">Order portaal</a><a href="/" class="nav-link">Terug naar website</a></div>
+    </nav>
+    <section class="hero-content">
+      <div>
+        <p class="eyebrow">Beheer</p>
+        <h1>Vaste klanten beheren</h1>
+        <p class="lead">Deze pagina is afgeschermd met admin-code. De code wordt niet onthouden; bij opnieuw openen moet je opnieuw inloggen. Klanten kunnen zelf geen account aanmaken en geen factuurbetaling activeren.</p>
+      </div>
+      <div class="hero-card"><span>Admin</span><p>Maak zakelijke klanten aan en bekijk bestaande accounts.</p></div>
+    </section>
+  </header>
+
+  <main class="page-main">
+    <section class="panel page-card" id="adminLoginPanel">
+      <p class="eyebrow">Toegang</p>
+      <h2>Admin-code</h2>
+      <form id="adminLoginForm" class="account-form">
+        <label>Admin-code<input type="password" id="adminCodeInput" required placeholder="Admin-code"></label>
+        <button type="submit" class="primary full">Open beheer</button>
+        <div id="adminLoginResult" class="form-result"></div>
+      </form>
+    </section>
+
+    <section class="panel page-card hidden" id="adminMainPanel">
+      <button type="button" class="secondary" id="adminLogoutBtn">Uitloggen / vergrendelen</button>
+      <p class="eyebrow">Nieuw / bijwerken</p>
+      <h2>Klantgegevens</h2>
+      <form id="adminAccountForm" class="account-form">
+        <input type="hidden" name="adminCode" id="adminCodeHidden">
+        <div class="field-row">
+          <label>Voornaam<input type="text" name="firstName" placeholder="Voornaam"></label>
+          <label>Achternaam<input type="text" name="lastName" placeholder="Achternaam"></label>
+        </div>
+        <label>Naam contactpersoon<input type="text" name="name" required placeholder="Naam contactpersoon"></label>
+        <div class="field-row">
+          <label>E-mail klant<input type="email" name="email" required placeholder="klant@bedrijf.nl"></label>
+          <label>Tijdelijk wachtwoord<input type="text" name="password" placeholder="Alleen nodig bij nieuw account"></label>
+        </div>
+        <div class="field-row">
+          <label>Bedrijfsnaam<input type="text" name="companyName" required placeholder="Bedrijfsnaam"></label>
+          <label>Btw-nummer<input type="text" name="vatNumber" required placeholder="NL123456789B01"></label>
+        </div>
+        <div class="field-row">
+          <label>Straat<input type="text" name="street" placeholder="Straat"></label>
+          <label>Huisnummer<input type="text" name="houseNumber" placeholder="Huisnummer"></label>
+        </div>
+        <div class="field-row">
+          <label>Postcode<input type="text" name="postalCode" placeholder="Postcode"></label>
+          <label>Plaats<input type="text" name="city" placeholder="Plaats"></label>
+        </div>
+        <label>Land<input type="text" name="country" value="Nederland" placeholder="Nederland"></label>
+        <label class="choice-pill"><input type="checkbox" name="invoiceAllowed" checked> Op factuur toestaan</label>
+        <button type="submit" class="primary full">Account aanmaken / bijwerken</button>
+        <div id="adminAccountResult" class="form-result"></div>
+      </form>
+    </section>
+
+    <section class="panel page-card hidden" id="accountsOverviewPanel">
+      <p class="eyebrow">Overzicht</p>
+      <h2>Bestaande accounts</h2>
+      <button type="button" class="secondary" id="refreshAccountsBtn">Ververs lijst</button>
+      <div id="accountsList" class="accounts-list"></div>
+    </section>
+  </main>
+
+  <script>
+    let adminCode = '';
+
+    const loginPanel = document.getElementById('adminLoginPanel');
+    const mainPanel = document.getElementById('adminMainPanel');
+    const overviewPanel = document.getElementById('accountsOverviewPanel');
+    const loginForm = document.getElementById('adminLoginForm');
+    const adminForm = document.getElementById('adminAccountForm');
+    const loginResult = document.getElementById('adminLoginResult');
+    const accountResult = document.getElementById('adminAccountResult');
+    const adminCodeInput = document.getElementById('adminCodeInput');
+    const adminCodeHidden = document.getElementById('adminCodeHidden');
+    const accountsList = document.getElementById('accountsList');
+    const refreshAccountsBtn = document.getElementById('refreshAccountsBtn');
+    const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+
+    function show(el) { el.classList.remove('hidden'); }
+    function hide(el) { el.classList.add('hidden'); }
+
+    async function loadAccounts() {
+      accountsList.innerHTML = 'Accounts laden...';
+      try {
+        const res = await fetch('/api/admin/accounts/list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminCode })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Lijst ophalen mislukt.');
+
+        if (!json.accounts.length) {
+          accountsList.innerHTML = '<p class="muted">Nog geen accounts.</p>';
+          return;
+        }
+
+        accountsList.innerHTML = json.accounts.map(acc => `
+          <div class="account-row">
+            <div>
+              <strong>${acc.companyName || acc.email}</strong>
+              <p>${acc.name || ''} · ${acc.email}</p>
+              <p>${acc.street || ''} ${acc.houseNumber || ''}, ${acc.postalCode || ''} ${acc.city || ''}</p>
+              <p>Btw: ${acc.vatNumber || '-'} · Factuur: ${acc.invoiceAllowed ? 'ja' : 'nee'}</p>
+            </div>
+            <button type="button" class="secondary" data-fill='${JSON.stringify(acc).replaceAll("'", "&apos;")}'>Bewerken</button>
+          </div>
+        `).join('');
+
+        accountsList.querySelectorAll('[data-fill]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const acc = JSON.parse(btn.dataset.fill.replaceAll('&apos;', "'"));
+            for (const [key, value] of Object.entries(acc)) {
+              if (adminForm.elements[key]) adminForm.elements[key].value = value || '';
+            }
+            adminForm.elements.invoiceAllowed.checked = !!acc.invoiceAllowed;
+            window.scrollTo({ top: mainPanel.offsetTop - 40, behavior: 'smooth' });
+          });
+        });
+      } catch (err) {
+        accountsList.innerHTML = `<p class="form-result error">${err.message}</p>`;
+      }
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginResult.className = 'form-result';
+      loginResult.textContent = 'Controleren...';
+      adminCode = adminCodeInput.value;
+      try {
+        const res = await fetch('/api/admin/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminCode })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Admin-code klopt niet.');
+        adminCodeHidden.value = adminCode;
+        hide(loginPanel);
+        show(mainPanel);
+        show(overviewPanel);
+        await loadAccounts();
+      } catch (err) {
+        loginResult.className = 'form-result error';
+        loginResult.textContent = err.message;
+      }
+    });
+
+    adminForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      accountResult.className = 'form-result';
+      accountResult.textContent = 'Account opslaan...';
+
+      const data = Object.fromEntries(new FormData(adminForm).entries());
+      data.invoiceAllowed = adminForm.invoiceAllowed.checked;
+
+      try {
+        const res = await fetch('/api/admin/accounts/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Account opslaan mislukt.');
+
+        accountResult.className = 'form-result success';
+        accountResult.textContent = json.updated ? 'Account bijgewerkt.' : 'Account aangemaakt.';
+        adminForm.reset();
+        adminCodeHidden.value = adminCode;
+        adminForm.invoiceAllowed.checked = true;
+        adminForm.country.value = 'Nederland';
+        await loadAccounts();
+      } catch (err) {
+        accountResult.className = 'form-result error';
+        accountResult.textContent = err.message;
+      }
+    });
+
+    
+    refreshAccountsBtn.addEventListener('click', loadAccounts);
+    adminLogoutBtn.addEventListener('click', () => {
+      adminCode = '';
+      adminCodeInput.value = '';
+      hide(mainPanel);
+      hide(overviewPanel);
+      show(loginPanel);
+      accountsList.innerHTML = '';
+    });
+  </script>
+</body>
+</html>
